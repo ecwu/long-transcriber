@@ -72,7 +72,7 @@ async def main():
                       help='Silence threshold in dB (lower = more aggressive)')
     parser.add_argument('--min-silence', type=int, default=400,
                       help='Minimum silence length in ms (higher = fewer segments)')
-    parser.add_argument('--keep-silence', type=int, default=300,
+    parser.add_argument('--keep-silence', type=int, default=450,
                       help='Amount of silence to keep at segment boundaries in ms')
     parser.add_argument('--dry-run', action='store_true',
                       help='Only detect speech and save speech-only audio')
