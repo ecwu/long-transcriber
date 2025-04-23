@@ -6,9 +6,11 @@ import tempfile
 import os
 from dataclasses import dataclass
 from typing import List, Tuple
-from utilities import configure_logging
+from utilities import configure_logging, TqdmToLogger
+from tqdm import tqdm
 
 logger = configure_logging()
+tqdm_output = TqdmToLogger(logger)
 
 @dataclass
 class SilenceParams:
@@ -45,12 +47,43 @@ class AudioProcessor:
         """Split audio into segments based on silence detection."""
         logger.info("Detecting speech segments")
         
-        # Detect non-silent ranges
-        nonsilent_ranges = detect_nonsilent(
-            audio,
-            min_silence_len=self.params.min_silence_len,
-            silence_thresh=self.params.silence_thresh,
-        )
+        # Detect non-silent ranges with progress bar
+        logger.info("Detecting non-silent ranges...")
+        chunk_size = 10000  # Process in 10-second chunks
+        total_chunks = len(audio) // chunk_size + (1 if len(audio) % chunk_size else 0)
+        
+        nonsilent_ranges = []
+        current_pos = 0
+        
+        with tqdm(total=total_chunks, desc="Analyzing audio", file=tqdm_output) as pbar:
+            while current_pos < len(audio):
+                chunk_end = min(current_pos + chunk_size, len(audio))
+                chunk = audio[current_pos:chunk_end]
+                
+                # Detect silence in this chunk
+                chunk_ranges = detect_nonsilent(
+                    chunk,
+                    min_silence_len=self.params.min_silence_len,
+                    silence_thresh=self.params.silence_thresh,
+                )
+                
+                # Adjust ranges to account for chunk position
+                adjusted_ranges = [(start + current_pos, end + current_pos) for start, end in chunk_ranges]
+                nonsilent_ranges.extend(adjusted_ranges)
+                
+                current_pos = chunk_end
+                pbar.update(1)
+        
+        # Merge adjacent or overlapping ranges
+        if nonsilent_ranges:
+            merged_ranges = [nonsilent_ranges[0]]
+            for current_start, current_end in nonsilent_ranges[1:]:
+                prev_start, prev_end = merged_ranges[-1]
+                if current_start <= prev_end + self.params.min_silence_len:
+                    merged_ranges[-1] = (prev_start, max(current_end, prev_end))
+                else:
+                    merged_ranges.append((current_start, current_end))
+            nonsilent_ranges = merged_ranges
         
         # Calculate audio analysis
         total_duration = len(audio)
@@ -68,13 +101,21 @@ class AudioProcessor:
         logger.info(f"Found {len(nonsilent_ranges)} speech segments")
         logger.info(f"Speech percentage: {analysis.speech_percentage:.1f}%")
         
-        # Split on silence
-        segments = split_on_silence(
+        # Split on silence with progress bar
+        logger.info("Splitting audio on silence...")
+        chunks = split_on_silence(
             audio,
             silence_thresh=self.params.silence_thresh,
             min_silence_len=self.params.min_silence_len,
             keep_silence=self.params.keep_silence
         )
+        
+        # Process segments with progress bar
+        segments = []
+        with tqdm(total=len(chunks), desc="Processing segments", file=tqdm_output) as pbar:
+            for chunk in chunks:
+                segments.append(chunk)
+                pbar.update(1)
         
         return segments, nonsilent_ranges, analysis
 
@@ -86,10 +127,12 @@ class AudioProcessor:
             logger.warning("No speech segments found!")
             return AudioSegment.empty()
             
-        # Concatenate speech segments
+        # Concatenate speech segments with progress bar
         speech_audio = segments[0]
-        for segment in segments[1:]:
-            speech_audio = speech_audio + segment
+        with tqdm(total=len(segments)-1, desc="Concatenating segments", file=tqdm_output) as pbar:
+            for segment in segments[1:]:
+                speech_audio = speech_audio + segment
+                pbar.update(1)
             
         return speech_audio
 
