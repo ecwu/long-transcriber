@@ -65,6 +65,7 @@ class AudioProcessor:
                     chunk,
                     min_silence_len=self.params.min_silence_len,
                     silence_thresh=self.params.silence_thresh,
+                    seek_step=100,
                 )
                 
                 # Adjust ranges to account for chunk position
@@ -107,7 +108,8 @@ class AudioProcessor:
             audio,
             silence_thresh=self.params.silence_thresh,
             min_silence_len=self.params.min_silence_len,
-            keep_silence=self.params.keep_silence
+            keep_silence=self.params.keep_silence,
+            seek_step=100,
         )
         
         # Process segments with progress bar
